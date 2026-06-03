@@ -1,4 +1,4 @@
-```python
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
@@ -98,5 +98,3 @@ async def ingest_metric(payload: CanonicalPayload, background_tasks: BackgroundT
     background_tasks.add_task(forward_to_gnocchi, payload)
     
     return {"status": "accepted"}
-
-```
