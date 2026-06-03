@@ -5,6 +5,7 @@ from typing import Optional
 import httpx
 import os
 from datetime import datetime, timezone
+from typing import Optional, List
 
 # ==========================================
 # 1. Environment Configuration and Constants
@@ -102,17 +103,21 @@ async def forward_to_gnocchi(payload: CanonicalPayload):
 # 4. API Endpoints (Ingestion & Validation)
 # ==========================================
 @app.post("/v1/metrics", status_code=202)
-async def ingest_metric(payload: CanonicalPayload, background_tasks: BackgroundTasks):
+async def ingest_metric(payloads: List[CanonicalPayload], background_tasks: BackgroundTasks):
     """
-    Ingests metrics from Fluent Bit, validates them, and forwards to Gnocchi 
-    using background tasks.
+    Fluent Bit으로부터 메트릭 배열(Batch)을 수신받아 검증 후 백그라운드에서 Gnocchi로 전송합니다.
     """
-    # 1. Validate if the metric is in the allowed whitelist
-    if payload.metric.name not in ALLOWED_METRICS:
-        print(f"[WARN] Blocked unauthorized metric: {payload.metric.name}")
-        raise HTTPException(status_code=400, detail=f"Metric '{payload.metric.name}' is not allowed.")
+    accepted_count = 0
     
-    # 2. Return acceptance immediately and offload Gnocchi transmission to background tasks
-    background_tasks.add_task(forward_to_gnocchi, payload)
+    # Fluent Bit이 보낸 여러 개의 메트릭을 반복문으로 처리
+    for payload in payloads:
+        # 1. 허용된 메트릭인지 검사 (Validation)
+        if payload.metric.name not in ALLOWED_METRICS:
+            print(f"[WARN] 허용되지 않은 메트릭 차단: {payload.metric.name}")
+            continue # 에러를 내지 않고 해당 메트릭만 무시 (다른 정상 데이터는 살림)
+        
+        # 2. 백그라운드 태스크로 개별 전송 작업 할당
+        background_tasks.add_task(forward_to_gnocchi, payload)
+        accepted_count += 1
     
-    return {"status": "accepted"}
+    return {"status": "accepted", "processed_metrics": accepted_count}
